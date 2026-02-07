@@ -1,0 +1,28 @@
+# --- OS・エディタ関連 ---
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+# サクラエディタのバックアップファイルなど
+*.bak
+
+# --- Node.js 関連 ---
+node_modules/
+npm-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+dist/
+build/
+
+# --- Spring Boot / Java 関連 ---
+target/
+build/
+.gradle/
+*.class
+*.jar
+*.war
+
+# --- セキュリティ・環境変数---
+.env
+.env.local
