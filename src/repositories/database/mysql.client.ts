@@ -4,7 +4,6 @@ export class MySQLClient {
   private pool: mysql.Pool;
 
   constructor() {
-    // .env から設定を読み込み
     this.pool = mysql.createPool({
       host: process.env['MYSQL_HOST'] || 'localhost',
       user: process.env['MYSQL_USER'] || 'root',
@@ -18,23 +17,23 @@ export class MySQLClient {
   }
 
   /**
-   * クエリ実行用メソッド
+   * トランザクションを開始するために、プールからコネクションを1つ貸し出す
    */
-  async execute<T>(sql: string, params?: any[]): Promise<T> {
+  async getConnection(): Promise<mysql.PoolConnection> {
+    return await this.pool.getConnection();
+  }
+
+  /**
+   * 特定のコネクションを用いてSQLを実行する
+   */
+  async execute<T>(conn: mysql.PoolConnection, sql: string, params?: any[]): Promise<T> {
     try {
-      const [rows] = await this.pool.execute(sql, params);
+      const [rows] = await conn.execute(sql, params);
       return rows as T;
     } catch (error) {
       console.error('Database Query Error:', error);
       throw error;
     }
-  }
-
-  /**
-   * トランザクションが必要な場合に使用
-   */
-  async getConnection(): Promise<mysql.PoolConnection> {
-    return await this.pool.getConnection();
   }
 }
 

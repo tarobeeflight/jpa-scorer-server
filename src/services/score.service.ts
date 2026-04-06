@@ -1,6 +1,7 @@
 // src/services/media.service.ts
 import { mysqlClient } from '../repositories/database/mysql.client.js';
 import { redisClient } from '../repositories/cache/redis.client.js';
+import type { Action } from '../types/action.type.js';
 
 export type Player = {
   id: number;
@@ -9,16 +10,11 @@ export type Player = {
 }
 
 export class ScoreService {
-  async getPlayer(id: number) {
-    const sql = 'SELECT * FROM test_members WHERE id = ?';
-    const result = await mysqlClient.execute<Player[]>(sql, [id]);
-    return result[0] ?? null;
-  }
 
-  async setPlayerSkillLevelToRedis(id: number, skillLevel: number) {
-    await redisClient.set(`player:${id}:skillLevel`, skillLevel.toString());
-    const skillLevelFromRedis = await redisClient.get(`player:${id}:skillLevel`);
-    return skillLevelFromRedis;
+  async updateActionHistory({matchId, gameNo, history}: { matchId: string, gameNo: number, history: Action[] }) {
+    await redisClient.set(`game:${matchId}:${gameNo}`, JSON.stringify(history));
+    const historyStr = await redisClient.get(`game:${matchId}:${gameNo}`);
+    console.log('history: ', historyStr);
   }
 }
 

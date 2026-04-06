@@ -5,6 +5,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import { redisClient } from './repositories/cache/redis.client.js';
 import { scoreController } from './controllers/score.controller.js';
+import { playerController } from './controllers/player.controller.js';
 
 const PORT = process.env.PORT || 3000;
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || 'http://localhost:4200';
@@ -25,19 +26,12 @@ export type ServerStatus = {
   message: string;
   timestamp: string;
 }
-// GET /api/player エンドポイントの定義
-app.get('/api/player', (req, res) => scoreController.getPlayer(req, res));
 
-// GET /status エンドポイントの定義
-app.get('/api/status', (req: Request, res: Response) => {
+// POST /api/player/resister エンドポイントの定義
+app.post('/api/player/resister', (req: Request, res: Response) => playerController.register(req, res));
 
-  const response: ServerStatus = {
-    status: 'ok',
-    message: 'Node.js + TypeScript サーバーと接続完了！',
-    timestamp: new Date().toISOString()
-  };
-  res.json(response);
-});
+// POST /api/score/update エンドポイントの定義
+app.post('/api/score/update', (req: Request, res: Response) => scoreController.updateActionHistory(req, res));
 
 // サーバーの起動
 app.listen(PORT, () => {
