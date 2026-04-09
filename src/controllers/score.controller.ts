@@ -1,4 +1,3 @@
-// src/controllers/score.controller.ts
 import type { Request, Response } from 'express';
 import { scoreService } from '../services/score.service.js';
 
