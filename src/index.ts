@@ -5,9 +5,11 @@ import { createServer } from 'http';
 import { Server } from 'socket.io';
 import cors from 'cors';
 import { redisClient } from './repositories/cache/redis.client.js';
-import { scoreController } from './controllers/score.controller.js';
 import { playerController } from './controllers/player.controller.js';
-import type { Action } from './types/action.type.js';
+import { matchController } from './controllers/match.controller.js';
+import { appUtil } from './utils/app.util.js';
+import { teamController } from './controllers/team.controller.js';
+import { scoreController } from './controllers/score.controller.js';
 
 const PORT = process.env.PORT || 3000;
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || 'http://localhost:4200';
@@ -33,39 +35,39 @@ app.use(express.json());
 // Redis接続
 await redisClient.connect();
 
+// 初期化
+await appUtil.init();
+
 // --- WebSocket ロジック ---
 io.on('connection', (socket) => {
   console.log(`User connected: ${socket.id}`);
 
-  // 試合ごとのルームに参加（JPAの試合IDなどを想定）
-  socket.on('join-match', (data: {matchId: string, gameNo: number}) => {
-    socket.join(data.matchId + '-' + data.gameNo);
-    console.log(`User ${socket.id} joined match: ${data.matchId}, game: ${data.gameNo}`);
-  });
+  // コントローラーでイベントを登録
+  matchController.attachSocketEvents(socket, io);
+  scoreController.attachSocketEvents(socket, io);
 
-  // スコア更新イベントの受信
-  socket.on('update-score', (data: { matchId: string, gameNo: number, history: Action[] }) => {
-    // 同じ matchId のルームにいる全員（自分以外）に通知
-    socket.to(data.matchId + '-' + data.gameNo).emit('score-broadcast', data.history);
-    console.log(`Score updated for match ${data.matchId} game ${data.gameNo}: `, data.history);
-  });
 
   socket.on('disconnect', () => {
     console.log('User disconnected');
   });
 });
 
-export type ServerStatus = {
-  status: string;
-  message: string;
-  timestamp: string;
-}
+// todo : コントローラーにappを渡してAPIエンドポイントを移動したい
 
-// POST /api/player/resister エンドポイントの定義
-app.post('/api/player/resister', (req: Request, res: Response) => playerController.register(req, res));
+// POST /api/player/register エンドポイントの定義
+app.post('/api/player/register', (req: Request, res: Response) => playerController.register(req, res));
 
 // POST /api/score/update エンドポイントの定義
-app.post('/api/score/update', (req: Request, res: Response) => scoreController.updateActionHistory(req, res));
+// app.post('/api/score/update', (req: Request, res: Response) => scoreController.updateActionHistory(req, res));
+
+// GET /api/match/list エンドポイントの定義
+app.get('/api/match/list', (req: Request, res: Response) => matchController.get(req, res));
+
+// GET /api/team/list エンドポイントの定義
+app.get('/api/team/list', (req: Request, res: Response) => teamController.get(req, res));
+
+// POST /api/match/create エンドポイントの定義
+app.post('/api/match/create', (req: Request, res: Response) => matchController.create(req, res, io));
 
 // サーバーの起動
 httpServer.listen(PORT, () => {

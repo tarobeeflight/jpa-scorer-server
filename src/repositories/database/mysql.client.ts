@@ -1,4 +1,4 @@
-import mysql from 'mysql2/promise';
+import mysql, { type ResultSetHeader } from 'mysql2/promise';
 
 export class MySQLClient {
   private pool: mysql.Pool;
@@ -26,12 +26,41 @@ export class MySQLClient {
   /**
    * 特定のコネクションを用いてSQLを実行する
    */
-  async execute<T>(conn: mysql.PoolConnection, sql: string, params?: any[]): Promise<T> {
+  async executeQuery<T>(conn: mysql.PoolConnection, sql: string, params?: any[]): Promise<T[]> {
     try {
+      // executeの戻り値配列のうち、最初の要素（結果データ）だけをrowsに代入する
       const [rows] = await conn.execute(sql, params);
-      return rows as T;
+
+      // INSERT/UPDATE/DELETEの場合は、rowsにResultSetHeader（操作した行数などのメタデータ）が入るため、そのまま返す
+      // SELECTの場合は、rowsに取得したレコードが入るため処理を継続する
+      if (!Array.isArray(rows)) {
+        return [];
+      }
+
+      // テーブルのスネークケースをキャメルケースに変換して返す
+      const camelizedRows = rows.map(row => {
+        const newRow: any = {};
+        Object.keys(row).forEach(key => {
+          // スネークケースをキャメルケースに変換して新しいオブジェクトに詰める
+          const camelKey = key.replace(/_([a-z])/g, (g) => g[1]!.toUpperCase());
+          newRow[camelKey] = (row as any)[key];
+        });
+        return newRow;
+      });
+
+      return camelizedRows as T[];
     } catch (error) {
-      console.error('Database Query Error:', error);
+      console.error('Database Query Error: ', error);
+      throw error;
+    }
+  }
+
+  async executeNonQuery(conn: mysql.PoolConnection, sql: string, params?: any[]): Promise<number> {
+    try {
+      const [result] = await conn.execute(sql, params);
+      return (result as ResultSetHeader).affectedRows;
+    } catch (error) {
+      console.log('Database Execute Error: ', error);
       throw error;
     }
   }

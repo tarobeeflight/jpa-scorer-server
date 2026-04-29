@@ -1,0 +1,1 @@
+export type GameRoomSocketRequest = {matchId: string, gameNo: number}

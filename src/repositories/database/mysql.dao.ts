@@ -19,6 +19,25 @@ export class MysqlDao {
   }
 
   /**
+   * IN句を生成しSQLを置換する
+   * パラメータの要素数分プレースホルダーを生成する
+   * 要素が空の場合、「1=1」で置換する
+   * パラメータも自動セットする
+   */
+  addInClauseParam(column: string, inClausePlaceholder: string, paramPlaceholder: string, param: string[] | number[]): void {
+    if (!inClausePlaceholder || !paramPlaceholder || !param || param.length === 0) {
+      this.sql = this.sql.replace(`:${inClausePlaceholder}`, '1 = 1');
+      return;
+    }
+    const placeholders = param.map((val, index) => {
+      const paramKey = `${paramPlaceholder}${index + 1}`;
+      this.addParam(paramKey, val);
+      return `:${paramKey}`;
+    }).join(', ');
+    this.sql = this.sql.replace(`:${inClausePlaceholder}`, `${column} IN (${placeholders})`);
+  }
+
+  /**
    * SQLセット
    */
   setSql(sql: string): void {
@@ -31,6 +50,27 @@ export class MysqlDao {
   addParam(key: string, value: any): void {
     this.params.set(key, value);
   }
+
+  /**
+   * パラメータセット
+   * インサートで固定の値をセットする
+   */
+  addInsertParam(userId: string, kinoId: any): void {
+    this.params.set('INSERTUSERID', userId);
+    this.params.set('INSERTKINOID', kinoId);
+    this.params.set('UPDATEUSERID', userId);
+    this.params.set('UPDATEKINOID', kinoId);
+  }
+
+  /**
+   * パラメータセット
+   * アップデートで固定の値をセットする
+   */
+  addUpdateParam(userId: string, kinoId: any): void {
+    this.params.set('UPDATEUSERID', userId);
+    this.params.set('UPDATEKINOID', kinoId);
+  }
+
 
   /**
    * コミット
@@ -67,53 +107,71 @@ export class MysqlDao {
    * SELECT実行
    */
   async executeQuery<T>(): Promise<T[]> {
-    return await this.run<T[]>();
-  }
-
-  /**
-   * INSERT/UPDATE/DELETE実行
-   */
-  async executeNonQuery(): Promise<any> {
-    return await this.run<any>();
-  }
-
-  /**
-   * 内部実行ロジック
-   */
-  private async run<T>(): Promise<T> {
-    if (!this.connection) {
-      throw new Error('Connection is not established.');
-    }
-
-    const { query, values } = this.prepareQuery();
-    
-    console.log('--- SQL Log ---');
-    console.log('Query:', query);
-    console.log('Params:', values);
-
     try {
-      return await mysqlClient.execute<T>(this.connection, query, values);
+      if (!this.connection) {
+        throw new Error('Connection is not established.');
+      }
+
+      const { query, params } = this.prepareQuery();
+
+      console.log('--- SQL Log ---');
+      console.log('Query:', query);
+      console.log('Params:', params);
+
+      return await mysqlClient.executeQuery<T>(this.connection, query, params);
     } finally {
       this.clear();
     }
   }
 
-  private prepareQuery(): { query: string; values: any[] } {
+  /**
+   * INSERT/UPDATE/DELETE実行
+   */
+  async executeNonQuery(): Promise<number> {
+    try {
+      if (!this.connection) {
+        throw new Error('Connection is not established.');
+      }
+
+      const { query, params } = this.prepareQuery();
+
+      console.log('--- SQL Log ---');
+      console.log('Query:', query);
+      console.log('Params:', params);
+
+      return await mysqlClient.executeNonQuery(this.connection, query, params);
+    } finally {
+      this.clear();
+    }
+  }
+
+  private prepareQuery(): { query: string; params: any[] } {
     let preparedSql = this.sql;
-    const values: any[] = [];
-    const matches = this.sql.match(/:(\w+)/g);
+    const params: any[] = [];
+    const matches = this.sql.match(/:(\w+)\b/g);
 
     if (matches) {
-      matches.forEach((match) => {
+      // 重複を排除してループ（同じパラメータが複数回使われるケース対応）
+      const uniqueMatches = [...new Set(matches)];
+
+      uniqueMatches.forEach((match) => {
         const key = match.substring(1);
         if (!this.params.has(key)) {
           throw new Error(`Parameter "${key}" is missing.`);
         }
-        preparedSql = preparedSql.replace(match, '?');
-        values.push(this.params.get(key));
+
+        // 全置換（正規表現を使って該当するパラメータ名をすべて ? に）
+        const regex = new RegExp(match + '\\b', 'g');
+        preparedSql = preparedSql.replace(regex, '?');
+      });
+
+      // パラメータの値を順番通りに再収集
+      const orderedMatches = this.sql.match(/:(\w+)\b/g);
+      orderedMatches?.forEach(m => {
+        params.push(this.params.get(m.substring(1)));
       });
     }
-    return { query: preparedSql, values };
+    return { query: preparedSql, params };
   }
 
   private clear(): void {
