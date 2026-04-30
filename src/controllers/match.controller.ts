@@ -3,25 +3,61 @@ import { matchService } from '../services/match.service.js';
 import { BaseController } from './base.controller.js';
 import type { Match } from '../types/match.type.js';
 import type { Server, Socket } from 'socket.io';
-import type { MatchRoomSocketRequest } from '../types/requests/match-room.socket.request.js';
 import type { GameRoomSocketRequest } from '../types/requests/game-room.socket.resuest.js';
+import { codeService } from '../services/code.service.js';
+import type { PlayerInfoInitResponse } from '../types/responses/player-info-init.http.response.js';
+import type { GameUpdatePlayerRequest } from '../types/requests/game-update-player.http.request.js';
 
 export class MatchController extends BaseController {
   // ---------------------------------------------------
   // HTTP API
   // ---------------------------------------------------
   /**
-   * 試合情報を取得する
+   * 試合リストを取得する
    * @param req 
    * @param res 
    * @returns 
    */
-  async get(req: Request, res: Response) {
+  async getMatchList(req: Request, res: Response) {
     try {
       // 取得
-      const matches = await matchService.get([]);
+      const matches = await matchService.getMatchList([]);
 
       const response = this.createResponse('success', 'Matches retrieved successfully', matches);
+      return res.json(response);
+    } catch (error) {
+      console.error(error);
+      const response = this.createResponse('error', 'Internal Server Error', undefined);
+      return res.status(500).json(response);
+    }
+  }
+
+  /**
+   * プレイヤー情報画面の初期表示用のデータを取得する
+   * パスパラメータで指定した対戦、コードマスタのSKILL_LEVEL_TO_GOALを取得する
+   * @param req 
+   * @param res 
+   * @returns 
+   */
+  async getPlayerInfoInit(req: Request, res: Response) {
+    try {
+      // 取得
+      const game = await matchService.getGame(req.params.matchId as string, Number(req.params.gameNo));
+      const codeList = await codeService.get('SKILL_LEVEL_TO_GOAL');
+
+      // コードマスタをMapもどきに変換
+      // MapだとJSONにシリアライズできないため、オブジェクトで代用する。todo : いつか汎用クラスを作る。
+      const skillToGoal: { [key: number]: number } = {};
+      codeList.forEach(code => {
+        skillToGoal[Number(code.code1)] = Number(code.code2);
+      });
+
+      // データ成形
+      const data: PlayerInfoInitResponse = { game, skillToGoal };
+      const response = this.createResponse('success', 'Game retrieved successfully', data);
+
+      console.log('getPlayerInfoInit response:', response);
+
       return res.json(response);
     } catch (error) {
       console.error(error);
@@ -58,6 +94,30 @@ export class MatchController extends BaseController {
       return res.status(500).json(response);
     }
   }
+
+  /**
+   * 対戦のプレイヤーを登録する
+   * 更新した試合をブロードキャストする
+   * @param req 
+   * @param res 
+   * @returns 
+   */
+  async updatePlayerOnGame(req: Request, res: Response, io: Server) {
+    try {    
+          // 更新
+          const isHaita = await matchService.updatePlayerOnGame(req.body as GameUpdatePlayerRequest);
+          
+          // todo : 更新した試合をブロードキャスト
+    
+          const response = this.createResponse('success', 'Game updated for player successfully', isHaita);
+          return res.json(response);
+        } catch (error) {
+          console.error(error);
+          const response = this.createResponse('error', 'Internal Server Error', undefined);
+          return res.status(500).json(response);
+        }
+  }
+
 
   // ---------------------------------------------------
   // WEB SOCKET API

@@ -5,11 +5,12 @@ import type { Game } from '../types/game.type.js';
 import { DateUtil } from '../utils/date.util.js';
 import { sequenceService } from './sequence.service.js';
 import { GameStatus, SequenceKbn } from '../constants.js';
+import type { GameUpdatePlayerRequest } from '../types/requests/game-update-player.http.request.js';
 
 export class MatchService {
-    async get(matchIdList: string[]): Promise<Match[]> {
+    async getMatchList(matchIdList: string[]): Promise<Match[]> {
         const matchSql =
-            "SELECT /*試合取得*/ "
+            "SELECT /*試合リスト取得*/ "
             + "    M.match_id, "
             + "    M.match_day, "
             + "    M.home_team_id, "
@@ -22,7 +23,8 @@ export class MatchService {
             + "    M.end_dt, "
             + "    M.home_team_point, "
             + "    M.visitor_team_point, "
-            + "    M.win_team_kbn "
+            + "    M.win_team_kbn, "
+            + "    M.revision "
             + "FROM "
             + "    t_match M "
             + "    /*ホームチーム*/ "
@@ -39,7 +41,7 @@ export class MatchService {
             + "    AND :INCLAUSE ";
 
         const gameSql =
-            "SELECT /*対戦取得*/ "
+            "SELECT /*対戦リスト取得*/ "
             + "    G.match_id, "
             + "    G.game_no, "
             + "    G.game_status, "
@@ -59,7 +61,8 @@ export class MatchService {
             + "    G.home_player_point, "
             + "    G.visitor_player_point, "
             + "    G.win_player_kbn, "
-            + "    G.inning "
+            + "    G.inning, "
+            + "    G.revision "
             + "FROM "
             + "    t_game G "
             + "WHERE "
@@ -99,6 +102,70 @@ export class MatchService {
         }
     }
 
+    /**
+   * 対戦を取得する
+   * @param matchId 
+   * @param gameNo 
+   * @returns 
+   */
+    async getGame(matchId: string, gameNo: number): Promise<Game | null> {
+        const sql =
+            "SELECT /*対戦取得*/ "
+            + "    G.match_id, "
+            + "    G.game_no, "
+            + "    G.game_status, "
+            + "    G.match_day, "
+            + "    G.start_dt, "
+            + "    G.end_dt, "
+            + "    G.home_player_id, "
+            + "    G.home_jpa_player_no, "
+            + "    G.home_player_nm, "
+            + "    G.visitor_player_id, "
+            + "    G.visitor_jpa_player_no, "
+            + "    G.visitor_player_nm, "
+            + "    G.home_skill_level, "
+            + "    G.visitor_skill_level, "
+            + "    G.home_goal, "
+            + "    G.visitor_goal, "
+            + "    G.home_player_point, "
+            + "    G.visitor_player_point, "
+            + "    G.win_player_kbn, "
+            + "    G.inning, "
+            + "    G.revision "
+            + "FROM "
+            + "    t_game G "
+            + "WHERE "
+            + "    1 = 1 "
+            + "    AND G.match_id = :MATCHID "
+            + "    AND G.game_no = :GAMENO "
+
+        const dao = new MysqlDao();
+
+        try {
+            // 接続
+            await dao.connect();
+            // ----------------------------------
+            // 対戦取得
+            // ----------------------------------
+            dao.setSql(sql);
+            dao.addParam('MATCHID', matchId);
+            dao.addParam('GAMENO', gameNo);
+            const games = await dao.executeQuery<Game>();
+            return games.length > 0 ? games[0]! : null;
+        } catch (error) {
+            throw error;
+        } finally {
+            // 解放
+            await dao.release();
+        }
+    }
+
+
+    /**
+     * 試合・対戦を作成する
+     * @param match 
+     * @returns 
+     */
     async create(match: Partial<Match>): Promise<Match> {
         const matchSql =
             "INSERT /*試合作成*/ INTO "
@@ -236,11 +303,11 @@ export class MatchService {
                 dao.addInsertParam('test', 'test'); // todo : スタブ
                 await dao.executeNonQuery();
             }
-            
+
             dao.commit();
 
             // 作成した試合データを返す（コミット後でないと取得できない）
-            const createdMatch = await this.get([matchId]);
+            const createdMatch = await this.getMatchList([matchId]);
 
             return createdMatch.at(0)!;
 
@@ -251,6 +318,18 @@ export class MatchService {
             // 解放
             await dao.release();
         }
+    }
+
+    /**
+     * 対戦のプレイヤーを登録する
+     * @param match 
+     * @returns 
+     */
+    async updatePlayerOnGame(req: GameUpdatePlayerRequest): Promise<boolean> {
+        // todo : ここから
+
+
+        return true;
     }
 
 

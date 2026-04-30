@@ -54,17 +54,24 @@ io.on('connection', (socket) => {
 
 // todo : コントローラーにappを渡してAPIエンドポイントを移動したい
 
-// POST /api/player/register エンドポイントの定義
-app.post('/api/player/register', (req: Request, res: Response) => playerController.register(req, res));
+// ------------------------------------------------------
+// GET
+// ------------------------------------------------------
+// /api/match/list
+app.get('/api/match/list', (req: Request, res: Response) => matchController.getMatchList(req, res));
+// /api/team/list
+app.get('/api/team/list', (req: Request, res: Response) => teamController.get(req, res));
+// /api/player-info/init/:matchId/:gameNo
+app.get('/api/player-info/init/:matchId/:gameNo', (req: Request, res: Response) => matchController.getPlayerInfoInit(req, res));
 
-// POST /api/score/update エンドポイントの定義
+// ------------------------------------------------------
+// POST
+// ------------------------------------------------------
+// /api/game/update/player エンドポイントの定義
+app.post('/api/game/update/player', (req: Request, res: Response) => matchController.updatePlayerOnGame(req, res, io));
+// /api/score/update エンドポイントの定義
 // app.post('/api/score/update', (req: Request, res: Response) => scoreController.updateActionHistory(req, res));
 
-// GET /api/match/list エンドポイントの定義
-app.get('/api/match/list', (req: Request, res: Response) => matchController.get(req, res));
-
-// GET /api/team/list エンドポイントの定義
-app.get('/api/team/list', (req: Request, res: Response) => teamController.get(req, res));
 
 // POST /api/match/create エンドポイントの定義
 app.post('/api/match/create', (req: Request, res: Response) => matchController.create(req, res, io));

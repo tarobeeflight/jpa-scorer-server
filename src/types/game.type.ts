@@ -22,4 +22,5 @@ export type Game = {
     winPlayerKbn: string;
     firstPlayerKbn: string;
     inning: number;
+    revision: number;
 }
