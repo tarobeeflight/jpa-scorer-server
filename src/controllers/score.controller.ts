@@ -50,7 +50,7 @@ export class ScoreController extends BaseController {
 
             // Redisから該当の試合情報を取得する。Redisに存在しない場合、DBから取得する
             const match = await matchService.getMatchFromRedis(data.matchId)
-                ?? (await matchService.get([data.matchId]))!.at(0)!;
+                ?? (await matchService.getMatchList([data.matchId]))!.at(0)!;
 
             // 引数の履歴情報で更新
             const updatedMatch = appUtil.updateGameInMatch(match, data.gameNo, data.history);

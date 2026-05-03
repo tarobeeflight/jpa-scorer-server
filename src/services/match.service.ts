@@ -4,8 +4,9 @@ import type { Match } from '../types/match.type.js';
 import type { Game } from '../types/game.type.js';
 import { DateUtil } from '../utils/date.util.js';
 import { sequenceService } from './sequence.service.js';
-import { GameStatus, SequenceKbn } from '../constants.js';
+import { GameStatus, HomeKbn, SequenceKbn } from '../constants.js';
 import type { GameUpdatePlayerRequest } from '../types/requests/game-update-player.http.request.js';
+import type { UpdateFirstPlayerRequest } from '../types/requests/update-first-player.http.request.js';
 
 export class MatchService {
     async getMatchList(matchIdList: string[]): Promise<Match[]> {
@@ -61,6 +62,7 @@ export class MatchService {
             + "    G.home_player_point, "
             + "    G.visitor_player_point, "
             + "    G.win_player_kbn, "
+            + "    G.first_player_kbn, "
             + "    G.inning, "
             + "    G.revision "
             + "FROM "
@@ -130,6 +132,7 @@ export class MatchService {
             + "    G.home_player_point, "
             + "    G.visitor_player_point, "
             + "    G.win_player_kbn, "
+            + "    G.first_player_kbn, "
             + "    G.inning, "
             + "    G.revision "
             + "FROM "
@@ -137,7 +140,7 @@ export class MatchService {
             + "WHERE "
             + "    1 = 1 "
             + "    AND G.match_id = :MATCHID "
-            + "    AND G.game_no = :GAMENO "
+            + "    AND G.game_no = :GAMENO ";
 
         const dao = new MysqlDao();
 
@@ -322,16 +325,165 @@ export class MatchService {
 
     /**
      * 対戦のプレイヤーを登録する
+     * 排他エラーの場合、falseを返す
      * @param match 
      * @returns 
      */
-    async updatePlayerOnGame(req: GameUpdatePlayerRequest): Promise<boolean> {
-        // todo : ここから
+    async updatePlayerOnGame(req: GameUpdatePlayerRequest): Promise<{ isHaita: boolean, match: Match | null }> {
+        const sql =
+            "UPDATE /*対戦プレイヤー更新*/ "
+            + "    t_game G "
+            + "SET "
+            + "    G.game_status = :CONSTANTS_GAMESTATUS_PLAYERREGISTERED "
+            + "    , G.start_dt = now() "
+            + "    , G.home_player_id = :HOME_PLAYER_ID "
+            + "    , G.home_jpa_player_no = :HOME_JPA_PLAYER_NO "
+            + "    , G.home_player_nm = :HOME_PLAYER_NM "
+            + "    , G.home_skill_level = :HOME_SKILL_LEVEL "
+            + "    , G.home_goal = :HOME_GOAL "
+            + "    , G.visitor_player_id = :VISITOR_PLAYER_ID "
+            + "    , G.visitor_jpa_player_no = :VISITOR_JPA_PLAYER_NO "
+            + "    , G.visitor_player_nm = :VISITOR_PLAYER_NM "
+            + "    , G.visitor_skill_level = :VISITOR_SKILL_LEVEL "
+            + "    , G.visitor_goal = :VISITOR_GOAL "
+            + "    , G.home_player_point = :CONSTANTS_ZERO "
+            + "    , G.visitor_player_point = :CONSTANTS_ZERO "
+            + "    , G.home_game_point = :CONSTANTS_ZERO "
+            + "    , G.visitor_game_point = :CONSTANTS_ZERO "
+            + "    , G.inning = :CONSTANTS_ZERO "
+            + "    , G.update_dt = now() "
+            + "    , G.update_user_id = :UPDATEUSERID "
+            + "    , G.update_kino_id = :UPDATEKINOID "
+            + "    , G.revision = G.revision + 1 "
+            + "WHERE "
+            + "    G.match_id = :MATCH_ID  "
+            + "    AND G.game_no = :GAME_NO "
+            + "    AND G.revision = :REVISION ";
 
+        const dao = new MysqlDao();
 
-        return true;
+        try {
+            // 接続
+            await dao.connect();
+            // ----------------------------------
+            // 対戦更新
+            // ----------------------------------
+            dao.setSql(sql);
+            dao.addParam('MATCH_ID', req.matchId);
+            dao.addParam('GAME_NO', req.gameNo);
+            // クライアントでnew Date()すると基準時刻からの経過時間を生成している
+            // 出力時にローカルタイムに合わせた時刻を表示するが、httpだとUTC出力で送られるためずれる
+            // めんどくさいから一旦SQLでnow()にしているが、いつかクライアントで正しい日時を送るようにする
+            // プロジェクト全体でdate-fnsやdayjsなどの日時ライブラリを導入して、日時の扱いを統一したほうがいいかも
+            // dao.addParam('START_DT', new Date(req.startDt)); // todo : 文字列で渡ってくる日付をDate型に変換。一括で変換するようにする。
+            dao.addParam('HOME_PLAYER_ID', req.homePlayer.playerId);
+            dao.addParam('HOME_JPA_PLAYER_NO', req.homePlayer.jpaPlayerId);
+            dao.addParam('HOME_PLAYER_NM', req.homePlayer.name);
+            dao.addParam('HOME_SKILL_LEVEL', req.homePlayer.skillLevel);
+            dao.addParam('HOME_GOAL', req.homePlayer.goal);
+            dao.addParam('VISITOR_PLAYER_ID', req.visitorPlayer.playerId);
+            dao.addParam('VISITOR_JPA_PLAYER_NO', req.visitorPlayer.jpaPlayerId);
+            dao.addParam('VISITOR_PLAYER_NM', req.visitorPlayer.name);
+            dao.addParam('VISITOR_SKILL_LEVEL', req.visitorPlayer.skillLevel);
+            dao.addParam('VISITOR_GOAL', req.visitorPlayer.goal);
+            dao.addParam('REVISION', req.revision);
+            dao.addParam('CONSTANTS_GAMESTATUS_PLAYERREGISTERED', GameStatus.PLAYER_REGISTERED);
+            dao.addParam('CONSTANTS_ZERO', 0);
+            dao.addUpdateParam('test', 'test'); // todo : スタブ
+            const count = await dao.executeNonQuery();
+
+            await dao.commit();
+
+            if (count === 0) {
+                // 排他エラー
+                return { isHaita: true, match: null };
+            }
+
+            // 更新した試合・対戦を取得する
+            let updatedMatch = (await this.getMatchList([req.matchId])).at(0)!;
+            const updatedGame = updatedMatch.gameList.find(g => g.gameNo === req.gameNo)!;
+
+            // redisの試合を取得する
+            const redisMatch = await this.getMatchFromRedis(req.matchId) ?? null;
+            if (redisMatch) {
+                // 該当対戦を更新する
+                updatedMatch = {
+                    ...redisMatch,
+                    gameList: redisMatch.gameList.map(g => g.gameNo === req.gameNo ? updatedGame : g),
+                }
+            }
+            // redisの試合を更新する
+            this.updateMatchToRedis(updatedMatch);
+
+            return { isHaita: false, match: updatedMatch };
+
+        } catch (error) {
+            await dao.rollback();
+            throw error;
+        } finally {
+            await dao.release();
+        }
     }
 
+    /**
+     * 対戦の先攻プレイヤーを登録する
+     * 排他エラーの場合、trueを返す
+     * @param match 
+     * @returns 
+     */
+    async updateFirstPlayerOnGame(req: UpdateFirstPlayerRequest): Promise<{ isHaita: boolean }> {
+        const sql =
+            "UPDATE /*対戦先攻プレイヤー更新*/ "
+            + "    t_game G "
+            + "SET "
+            + "    G.first_player_kbn = :FIRST_PLAYER_KBN "
+            + "    , G.update_dt = now() "
+            + "    , G.update_user_id = :UPDATEUSERID "
+            + "    , G.update_kino_id = :UPDATEKINOID "
+            + "    , G.revision = G.revision + 1 "
+            + "WHERE "
+            + "    G.match_id = :MATCH_ID  "
+            + "    AND G.game_no = :GAME_NO "
+            + "    AND G.revision = :REVISION ";
+
+        const dao = new MysqlDao();
+
+        try {
+            // 接続
+            await dao.connect();
+            // ----------------------------------
+            // 対戦更新
+            // ----------------------------------
+            dao.setSql(sql);
+            dao.addParam('MATCH_ID', req.matchId);
+            dao.addParam('GAME_NO', req.gameNo);
+            dao.addParam('FIRST_PLAYER_KBN', req.firstPlayerKbn);
+            dao.addParam('REVISION', req.revision);
+            dao.addUpdateParam('test', 'test'); // todo : スタブ
+            const count = await dao.executeNonQuery();
+
+            await dao.commit();
+
+            if (count === 0) {
+                // 排他エラーの場合、trueを返す
+                const game = await this.getGame(req.matchId, req.gameNo);
+                return { isHaita: true };
+            }
+
+            // 正常の場合、falseを返す
+            return { isHaita: false };
+
+        } catch (error) {
+            await dao.rollback();
+            throw error;
+        } finally {
+            await dao.release();
+        }
+    }
+
+    async getMatchListFromRedis(): Promise<Match[] | null> {
+        return await redisClient.getMatchList();
+    }
 
     async getMatchFromRedis(matchId: string): Promise<Match | null> {
         return await redisClient.get<Match>(`match:${matchId}`);

@@ -50,7 +50,7 @@ export class AppUtil {
 
     private getPlayerPoint(homeKbn: HomeKbn, history: Action[]): number {
         return history
-            .filter(a => a.playerId === Number(homeKbn) && a.type === 'POCKET')
+            .filter(a => a.playerKbn === homeKbn && a.type === 'POCKET')
             .reduce((sum, a) => sum + (a.ballNumber === 9 ? 2 : 1), 0);
     }
 
@@ -64,11 +64,13 @@ export class AppUtil {
     }
 
     calcLoserGamePoint(skillLevel: number, point: number): number {
-        return this.gamePointMatrix.find(record => (
+        const gamePoint = this.gamePointMatrix.find(record => (
             record.loserSkillLevel === skillLevel
             && record.loserPointLower <= point
             && record.loserPointUpper >= point
-        ))!.loserGamePoint;
+        ))?.loserGamePoint;
+        // todo : 勝者側の場合、マップになくてエラーになるので、一旦0で返している。要修正
+        return gamePoint ?? 0;
     }
 }
 

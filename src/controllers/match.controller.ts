@@ -7,6 +7,10 @@ import type { GameRoomSocketRequest } from '../types/requests/game-room.socket.r
 import { codeService } from '../services/code.service.js';
 import type { PlayerInfoInitResponse } from '../types/responses/player-info-init.http.response.js';
 import type { GameUpdatePlayerRequest } from '../types/requests/game-update-player.http.request.js';
+import { scoreService } from '../services/score.service.js';
+import type { JpaMatchInitResponse } from '../types/responses/jpa-match-init.http.response.js';
+import type { UpdateFirstPlayerRequest } from '../types/requests/update-first-player.http.request.js';
+import type { UpdateFirstPlayerResponse } from '../types/responses/update-first-player.http.response.js';
 
 export class MatchController extends BaseController {
   // ---------------------------------------------------
@@ -21,7 +25,7 @@ export class MatchController extends BaseController {
   async getMatchList(req: Request, res: Response) {
     try {
       // 取得
-      const matches = await matchService.getMatchList([]);
+      const matches = await matchService.getMatchListFromRedis() ?? await matchService.getMatchList([]);
 
       const response = this.createResponse('success', 'Matches retrieved successfully', matches);
       return res.json(response);
@@ -67,6 +71,42 @@ export class MatchController extends BaseController {
   }
 
   /**
+   * 対戦画面の初期表示用のデータを取得する
+   * パスパラメータで指定した対戦、アクションを取得する
+   * @param req 
+   * @param res 
+   * @returns 
+   */
+  async getJpaMatchInit(req: Request, res: Response) {
+    try {
+      const matchId = req.params.matchId as string;
+      const gameNo = Number(req.params.gameNo);
+      // 取得
+      const game = await matchService.getGame(matchId, gameNo);
+      let history = await scoreService.getHistoryFromRedis(matchId, gameNo);
+
+      if (!history) {
+        history = await scoreService.getHistoryFromDb(matchId, gameNo) ?? [];
+        // DBのアクション履歴でredisに登録
+        await scoreService.updateHistoryToRedis(matchId, gameNo, history);
+      }
+
+
+      // データ成形
+      const data: JpaMatchInitResponse = { game, history};
+      const response = this.createResponse('success', 'jpa-match init successfully', data);
+
+      console.log('getJpaMatchInit response:', response);
+
+      return res.json(response);
+    } catch (error) {
+      console.error(error);
+      const response = this.createResponse('error', 'Internal Server Error', undefined);
+      return res.status(500).json(response);
+    }
+  }
+
+  /**
    * 試合情報をDBに登録する
    * 登録した試合をブロードキャストする
    * @param req 
@@ -78,7 +118,7 @@ export class MatchController extends BaseController {
       // HTTP通信時に文字列変換されてしまうため、日付をDate型に変換
       const m = {
         ...req.body as Partial<Match>,
-        matchDay: new Date(req.body.matchDay),
+        matchDay: new Date(req.body.matchDay), // todo : 要確認。match.service.ts > updatePlayerOnGame > startDtと同様の問題があるかも。日付単位やから気づかんかったか？
       };
       // 試合・対戦を作成
       const match: Match = await matchService.create(m);
@@ -105,11 +145,42 @@ export class MatchController extends BaseController {
   async updatePlayerOnGame(req: Request, res: Response, io: Server) {
     try {    
           // 更新
-          const isHaita = await matchService.updatePlayerOnGame(req.body as GameUpdatePlayerRequest);
+          const {isHaita, match} = await matchService.updatePlayerOnGame(req.body as GameUpdatePlayerRequest);
           
-          // todo : 更新した試合をブロードキャスト
+          // 更新した試合をブロードキャスト
+          if (!isHaita) {
+            this.broadcastMatchUpdate(io, match!);
+          }
     
           const response = this.createResponse('success', 'Game updated for player successfully', isHaita);
+          return res.json(response);
+        } catch (error) {
+          console.error(error);
+          const response = this.createResponse('error', 'Internal Server Error', undefined);
+          return res.status(500).json(response);
+        }
+  }
+
+  /**
+   * 対戦の先攻プレイヤーを登録する
+   * @param req 
+   * @param res 
+   * @returns 
+   */
+  async updateFirstPlayerOnGame(req: Request, res: Response) {
+    try {    
+          // 更新
+          const reqData = req.body as UpdateFirstPlayerRequest;
+          const { isHaita } = await matchService.updateFirstPlayerOnGame(reqData);
+    
+          let resData: UpdateFirstPlayerResponse;
+          if (isHaita) {
+            const game = await matchService.getGame(reqData.matchId, reqData.gameNo);
+            resData = { isHaita: true, firstPlayerKbn:  game!.firstPlayerKbn};
+          } else {
+            resData = { isHaita: false, firstPlayerKbn: reqData.firstPlayerKbn };
+          }
+          const response = this.createResponse('success', 'Game updated for first player successfully', resData);
           return res.json(response);
         } catch (error) {
           console.error(error);

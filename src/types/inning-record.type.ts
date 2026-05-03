@@ -1,9 +1,9 @@
 export type InningRecord = {
     inning: number;
-    player1Pockets: number[];
-    player2Pockets: number[];
-    isSafetyPlayer1: boolean;
-    isSafetyPlayer2: boolean;
-    isBreakPlayer1: boolean;
-    isBreakPlayer2: boolean;
+    homePlayerPockets: number[];
+    visitorPlayerPockets: number[];
+    isHomePlayerSafety: boolean;
+    isVisitorPlayerSafety: boolean;
+    isHomePlayerBreak: boolean;
+    isVisitorPlayerBreak: boolean;
 }

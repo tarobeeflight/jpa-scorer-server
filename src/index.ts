@@ -5,7 +5,6 @@ import { createServer } from 'http';
 import { Server } from 'socket.io';
 import cors from 'cors';
 import { redisClient } from './repositories/cache/redis.client.js';
-import { playerController } from './controllers/player.controller.js';
 import { matchController } from './controllers/match.controller.js';
 import { appUtil } from './utils/app.util.js';
 import { teamController } from './controllers/team.controller.js';
@@ -46,7 +45,6 @@ io.on('connection', (socket) => {
   matchController.attachSocketEvents(socket, io);
   scoreController.attachSocketEvents(socket, io);
 
-
   socket.on('disconnect', () => {
     console.log('User disconnected');
   });
@@ -63,16 +61,18 @@ app.get('/api/match/list', (req: Request, res: Response) => matchController.getM
 app.get('/api/team/list', (req: Request, res: Response) => teamController.get(req, res));
 // /api/player-info/init/:matchId/:gameNo
 app.get('/api/player-info/init/:matchId/:gameNo', (req: Request, res: Response) => matchController.getPlayerInfoInit(req, res));
+// /api/jpa-match/init/:matchId/:gameNo
+app.get('/api/jpa-match/init/:matchId/:gameNo', (req: Request, res: Response) => matchController.getJpaMatchInit(req, res));
 
 // ------------------------------------------------------
 // POST
 // ------------------------------------------------------
 // /api/game/update/player エンドポイントの定義
 app.post('/api/game/update/player', (req: Request, res: Response) => matchController.updatePlayerOnGame(req, res, io));
+// /api/game/update/first-player エンドポイントの定義
+app.post('/api/game/update/first-player', (req: Request, res: Response) => matchController.updateFirstPlayerOnGame(req, res));
 // /api/score/update エンドポイントの定義
 // app.post('/api/score/update', (req: Request, res: Response) => scoreController.updateActionHistory(req, res));
-
-
 // POST /api/match/create エンドポイントの定義
 app.post('/api/match/create', (req: Request, res: Response) => matchController.create(req, res, io));
 

@@ -1,6 +1,7 @@
 import { json } from 'node:stream/consumers';
 import { createClient } from 'redis';
 import type { RedisClientType } from 'redis';
+import type { Match } from '../../types/match.type.js';
 
 export class RedisClient {
   private client: RedisClientType;
@@ -55,6 +56,28 @@ export class RedisClient {
    */
   async del(key: string): Promise<void> {
     await this.client.del(key);
+  }
+
+  /**
+   * todo : 一旦ここに書いたが分ける
+   * @param key キー
+   */
+  async getMatchList(): Promise<Match[]> {
+    const keys = await this.client.keys('match:*');
+
+    // データの値も取得する場合（MGET）
+    const matches: Match[] = [];
+    if (keys.length > 0) {
+      const values = await this.client.mGet(keys);
+      for (const v of values) {
+        if (!v) {
+          continue;
+        }
+        matches.push(JSON.parse(v) as Match);
+      }
+    }
+
+    return matches;
   }
 }
 
