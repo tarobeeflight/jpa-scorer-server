@@ -59,25 +59,26 @@ export class RedisClient {
   }
 
   /**
-   * todo : 一旦ここに書いたが分ける
-   * @param key キー
+   * redisのディレクトリ内の全ての値を取得する
+   * @param dir redisのディレクトリ
    */
-  async getMatchList(): Promise<Match[]> {
-    const keys = await this.client.keys('match:*');
+  async getAllAtDirectory<T>(dir: string): Promise<T[]> {
+    // ディレクトリ内の全てのキーを取得
+    const keys = await this.client.keys(`${dir}:*`);
 
-    // データの値も取得する場合（MGET）
-    const matches: Match[] = [];
+    // 取得したキーから値を取得
+    const array: T[] = [];
     if (keys.length > 0) {
       const values = await this.client.mGet(keys);
       for (const v of values) {
         if (!v) {
           continue;
         }
-        matches.push(JSON.parse(v) as Match);
+        array.push(JSON.parse(v) as T);
       }
     }
 
-    return matches;
+    return array;
   }
 }
 

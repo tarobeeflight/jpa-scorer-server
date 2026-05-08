@@ -4,7 +4,7 @@ export type Game = {
     matchId: string;
     gameNo: number;
     gameStatus: GameStatus;
-    makeMatchDay: Date | null;
+    matchDay: Date | null;
     startDt: Date;
     endDt: Date;
     homePlayerId: string | null;

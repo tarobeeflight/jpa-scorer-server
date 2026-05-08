@@ -48,6 +48,21 @@ export class AppUtil {
         return match;
     }
 
+    convertHistoryToGame(game: Game, history: Action[] | null): Game {
+        if (!history) {
+            return game;
+        }
+
+        return {
+            ...game,
+            homePlayerPoint: this.getPlayerPoint(HomeKbn.HOME, history),
+            visitorPlayerPoint: this.getPlayerPoint(HomeKbn.VISITOR, history),
+            homeGamePoint: this.getGamePoint(HomeKbn.HOME, game!.homeSkillLevel, history),
+            visitorGamePoint: this.getGamePoint(HomeKbn.VISITOR, game!.visitorSkillLevel, history),
+            inning: this.getCurrentInning(history),
+        }
+    }
+
     private getPlayerPoint(homeKbn: HomeKbn, history: Action[]): number {
         return history
             .filter(a => a.playerKbn === homeKbn && a.type === 'POCKET')

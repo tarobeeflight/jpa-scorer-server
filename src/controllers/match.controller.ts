@@ -11,6 +11,9 @@ import { scoreService } from '../services/score.service.js';
 import type { JpaMatchInitResponse } from '../types/responses/jpa-match-init.http.response.js';
 import type { UpdateFirstPlayerRequest } from '../types/requests/update-first-player.http.request.js';
 import type { UpdateFirstPlayerResponse } from '../types/responses/update-first-player.http.response.js';
+import { appUtil } from '../utils/app.util.js';
+import type { Game } from '../types/game.type.js';
+import type { MatchListBroadcastSocketResponse } from '../types/responses/match-list-broadcast.socket.response.js';
 
 export class MatchController extends BaseController {
   // ---------------------------------------------------
@@ -24,8 +27,19 @@ export class MatchController extends BaseController {
    */
   async getMatchList(req: Request, res: Response) {
     try {
-      // 取得
-      const matches = await matchService.getMatchListFromRedis() ?? await matchService.getMatchList([]);
+      // DBから試合・対戦を取得
+      const matches = await matchService.getMatchList([]);
+
+      // 各試合の各対戦について、redisの履歴よりスコア情報を上書きする
+      // stream関数だと非同期処理を待機できないので直列実行にしている
+      for (const m of matches) {
+        const updatedGames = [];
+        for (const g of m.gameList) {
+          const history = await scoreService.getHistoryFromRedis(g.matchId, g.gameNo);
+          updatedGames.push(appUtil.convertHistoryToGame(g, history));
+        }
+        m.gameList = updatedGames;
+      }
 
       const response = this.createResponse('success', 'Matches retrieved successfully', matches);
       return res.json(response);
@@ -79,21 +93,22 @@ export class MatchController extends BaseController {
    */
   async getJpaMatchInit(req: Request, res: Response) {
     try {
+      // パスパラメータ
       const matchId = req.params.matchId as string;
       const gameNo = Number(req.params.gameNo);
-      // 取得
+      
+      // DBから対戦、redisからアクション履歴を取得
       const game = await matchService.getGame(matchId, gameNo);
       let history = await scoreService.getHistoryFromRedis(matchId, gameNo);
 
       if (!history) {
+        // redisにアクション履歴が存在しない場合、DBのアクション履歴をredisに登録する
         history = await scoreService.getHistoryFromDb(matchId, gameNo) ?? [];
-        // DBのアクション履歴でredisに登録
         await scoreService.updateHistoryToRedis(matchId, gameNo, history);
       }
 
-
       // データ成形
-      const data: JpaMatchInitResponse = { game, history};
+      const data: JpaMatchInitResponse = { game, history };
       const response = this.createResponse('success', 'jpa-match init successfully', data);
 
       console.log('getJpaMatchInit response:', response);
@@ -124,7 +139,7 @@ export class MatchController extends BaseController {
       const match: Match = await matchService.create(m);
 
       // 作成した試合をブロードキャスト
-      this.broadcastMatchUpdate(io, match);
+      this.broadcastMatchCreate(io, match);
 
       const response = this.createResponse('success', 'Match created successfully', undefined);
       return res.json(response);
@@ -143,22 +158,22 @@ export class MatchController extends BaseController {
    * @returns 
    */
   async updatePlayerOnGame(req: Request, res: Response, io: Server) {
-    try {    
-          // 更新
-          const {isHaita, match} = await matchService.updatePlayerOnGame(req.body as GameUpdatePlayerRequest);
-          
-          // 更新した試合をブロードキャスト
-          if (!isHaita) {
-            this.broadcastMatchUpdate(io, match!);
-          }
-    
-          const response = this.createResponse('success', 'Game updated for player successfully', isHaita);
-          return res.json(response);
-        } catch (error) {
-          console.error(error);
-          const response = this.createResponse('error', 'Internal Server Error', undefined);
-          return res.status(500).json(response);
-        }
+    try {
+      // 更新
+      const { isHaita, game } = await matchService.updatePlayerOnGame(req.body as GameUpdatePlayerRequest);
+
+      // 更新した試合をブロードキャスト
+      if (!isHaita) {
+        this.broadcastGameUpdate(io, game!);
+      }
+
+      const response = this.createResponse('success', 'Game updated for player successfully', isHaita);
+      return res.json(response);
+    } catch (error) {
+      console.error(error);
+      const response = this.createResponse('error', 'Internal Server Error', undefined);
+      return res.status(500).json(response);
+    }
   }
 
   /**
@@ -168,25 +183,25 @@ export class MatchController extends BaseController {
    * @returns 
    */
   async updateFirstPlayerOnGame(req: Request, res: Response) {
-    try {    
-          // 更新
-          const reqData = req.body as UpdateFirstPlayerRequest;
-          const { isHaita } = await matchService.updateFirstPlayerOnGame(reqData);
-    
-          let resData: UpdateFirstPlayerResponse;
-          if (isHaita) {
-            const game = await matchService.getGame(reqData.matchId, reqData.gameNo);
-            resData = { isHaita: true, firstPlayerKbn:  game!.firstPlayerKbn};
-          } else {
-            resData = { isHaita: false, firstPlayerKbn: reqData.firstPlayerKbn };
-          }
-          const response = this.createResponse('success', 'Game updated for first player successfully', resData);
-          return res.json(response);
-        } catch (error) {
-          console.error(error);
-          const response = this.createResponse('error', 'Internal Server Error', undefined);
-          return res.status(500).json(response);
-        }
+    try {
+      // 更新
+      const reqData = req.body as UpdateFirstPlayerRequest;
+      const { isHaita } = await matchService.updateFirstPlayerOnGame(reqData);
+
+      let resData: UpdateFirstPlayerResponse;
+      if (isHaita) {
+        const game = await matchService.getGame(reqData.matchId, reqData.gameNo);
+        resData = { isHaita: true, firstPlayerKbn: game!.firstPlayerKbn };
+      } else {
+        resData = { isHaita: false, firstPlayerKbn: reqData.firstPlayerKbn };
+      }
+      const response = this.createResponse('success', 'Game updated for first player successfully', resData);
+      return res.json(response);
+    } catch (error) {
+      console.error(error);
+      const response = this.createResponse('error', 'Internal Server Error', undefined);
+      return res.status(500).json(response);
+    }
   }
 
 
@@ -243,9 +258,17 @@ export class MatchController extends BaseController {
     });
   }
 
-  // 試合一覧ルームに試合更新をブロードキャスト
-  broadcastMatchUpdate(io: Server, match: Match): void {
-    const response = this.createResponse('success', 'broadcast match update', match);
+  // 試合一覧ルームに試合新規作成をブロードキャスト
+  broadcastMatchCreate(io: Server, match: Match): void {
+    const data: MatchListBroadcastSocketResponse = { match, game: null };
+    const response = this.createResponse('success', 'broadcast match update', data);
+    io.to('match-list').emit('match-list-broadcast', response);
+  }
+
+  // 試合一覧ルームに対戦更新をブロードキャスト
+  broadcastGameUpdate(io: Server, game: Partial<Game>): void {
+    const data: MatchListBroadcastSocketResponse = { game, match: null };
+    const response = this.createResponse('success', 'broadcast match update', data);
     io.to('match-list').emit('match-list-broadcast', response);
   }
 

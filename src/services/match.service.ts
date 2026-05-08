@@ -329,7 +329,7 @@ export class MatchService {
      * @param match 
      * @returns 
      */
-    async updatePlayerOnGame(req: GameUpdatePlayerRequest): Promise<{ isHaita: boolean, match: Match | null }> {
+    async updatePlayerOnGame(req: GameUpdatePlayerRequest): Promise<{ isHaita: boolean, game: Partial<Game> | null }> {
         const sql =
             "UPDATE /*対戦プレイヤー更新*/ "
             + "    t_game G "
@@ -396,26 +396,31 @@ export class MatchService {
 
             if (count === 0) {
                 // 排他エラー
-                return { isHaita: true, match: null };
+                return { isHaita: true, game: null };
             }
 
-            // 更新した試合・対戦を取得する
-            let updatedMatch = (await this.getMatchList([req.matchId])).at(0)!;
-            const updatedGame = updatedMatch.gameList.find(g => g.gameNo === req.gameNo)!;
-
-            // redisの試合を取得する
-            const redisMatch = await this.getMatchFromRedis(req.matchId) ?? null;
-            if (redisMatch) {
-                // 該当対戦を更新する
-                updatedMatch = {
-                    ...redisMatch,
-                    gameList: redisMatch.gameList.map(g => g.gameNo === req.gameNo ? updatedGame : g),
-                }
+            const game: Partial<Game> = {
+                matchId: req.matchId,
+                gameNo: req.gameNo,
+                gameStatus: GameStatus.PLAYER_REGISTERED,
+                homePlayerId: req.homePlayer.playerId,
+                homeJpaPlayerNo: req.homePlayer.jpaPlayerId,
+                homePlayerNm: req.homePlayer.name,
+                homeSkillLevel: req.homePlayer.skillLevel,
+                homeGoal: req.homePlayer.goal,
+                visitorPlayerId: req.visitorPlayer.playerId,
+                visitorJpaPlayerNo: req.visitorPlayer.jpaPlayerId,
+                visitorPlayerNm: req.visitorPlayer.name,
+                visitorSkillLevel: req.visitorPlayer.skillLevel,
+                visitorGoal: req.visitorPlayer.goal,
+                homePlayerPoint: 0,
+                visitorPlayerPoint: 0,
+                homeGamePoint: 0,
+                visitorGamePoint: 0,
+                inning: 0,
             }
-            // redisの試合を更新する
-            this.updateMatchToRedis(updatedMatch);
 
-            return { isHaita: false, match: updatedMatch };
+            return { isHaita: false, game };
 
         } catch (error) {
             await dao.rollback();
@@ -481,17 +486,28 @@ export class MatchService {
         }
     }
 
-    async getMatchListFromRedis(): Promise<Match[] | null> {
-        return await redisClient.getMatchList();
-    }
+    // async getMatchListFromRedis(): Promise<Match[]> {
+    //     // 試合を全て取得
+    //     const matches = await redisClient.getAllAtDirectory<Match>('match');
+    //     // 試合に紐づく対戦を全て取得
+    //     matches.forEach(async m => m.gameList = await redisClient.getAllAtDirectory<Game>(`game:${m.matchId}`));
+    //     return matches;
+    // }
 
-    async getMatchFromRedis(matchId: string): Promise<Match | null> {
-        return await redisClient.get<Match>(`match:${matchId}`);
-    }
+    // async getMatchFromRedis(matchId: string): Promise<Match | null> {
+    //     // 試合を取得
+    //     const match = await redisClient.get<Match>(`match:${matchId}`);
+    //     // 試合に紐づく対戦を全て取得
+    //     if (match) {
+    //         match.gameList = await redisClient.getAllAtDirectory<Game>(`game:${match?.matchId}`);
+    //     }
+    //     return match;
+    // }
 
-    async updateMatchToRedis(match: Match) {
-        await redisClient.set(`match:${match.matchId}`, JSON.stringify(match));
-    }
+    // async updateMatchToRedis(match: Match) {
+    //     await redisClient.set(`match:${match.matchId}`, JSON.stringify(match));
+    //     match.gameList.forEach(async g => await redisClient.set(`game:${match.matchId}:${g.gameNo}`, JSON.stringify(g)));
+    // }
 
 }
 

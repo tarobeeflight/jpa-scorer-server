@@ -71,8 +71,6 @@ app.get('/api/jpa-match/init/:matchId/:gameNo', (req: Request, res: Response) =>
 app.post('/api/game/update/player', (req: Request, res: Response) => matchController.updatePlayerOnGame(req, res, io));
 // /api/game/update/first-player エンドポイントの定義
 app.post('/api/game/update/first-player', (req: Request, res: Response) => matchController.updateFirstPlayerOnGame(req, res));
-// /api/score/update エンドポイントの定義
-// app.post('/api/score/update', (req: Request, res: Response) => scoreController.updateActionHistory(req, res));
 // POST /api/match/create エンドポイントの定義
 app.post('/api/match/create', (req: Request, res: Response) => matchController.create(req, res, io));
 
