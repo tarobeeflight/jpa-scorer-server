@@ -108,7 +108,7 @@ export class MatchController extends BaseController {
       }
 
       // データ成形
-      const data: JpaMatchInitResponse = { game, history };
+      const data: JpaMatchInitResponse = { game, history, gamePointMatrix: appUtil.gamePointMatrix };
       const response = this.createResponse('success', 'jpa-match init successfully', data);
 
       console.log('getJpaMatchInit response:', response);
