@@ -1,12 +1,13 @@
-import { redisClient } from '../repositories/cache/redis.client.js';
 import { MysqlDao } from '../repositories/database/mysql.dao.js';
 import type { Match } from '../types/match.type.js';
 import type { Game } from '../types/game.type.js';
 import { DateUtil } from '../utils/date.util.js';
 import { sequenceService } from './sequence.service.js';
-import { GameStatus, HomeKbn, SequenceKbn } from '../constants.js';
+import { ActionType, GameStatus, SequenceKbn } from '../constants.js';
 import type { GameUpdatePlayerRequest } from '../types/requests/game-update-player.http.request.js';
 import type { UpdateFirstPlayerRequest } from '../types/requests/update-first-player.http.request.js';
+import type { GameFinishRequest } from '../types/requests/game-finish.http.request.js';
+import type { Action } from '../types/action.type.js';
 
 export class MatchService {
     async getMatchList(matchIdList: string[]): Promise<Match[]> {
@@ -61,6 +62,8 @@ export class MatchService {
             + "    G.visitor_goal, "
             + "    G.home_player_point, "
             + "    G.visitor_player_point, "
+            + "    G.home_game_point, "
+            + "    G.visitor_game_point, "
             + "    G.win_player_kbn, "
             + "    G.first_player_kbn, "
             + "    G.inning, "
@@ -122,15 +125,17 @@ export class MatchService {
             + "    G.home_player_id, "
             + "    G.home_jpa_player_no, "
             + "    G.home_player_nm, "
+            + "    G.home_skill_level, "
+            + "    G.home_goal, "
             + "    G.visitor_player_id, "
             + "    G.visitor_jpa_player_no, "
             + "    G.visitor_player_nm, "
-            + "    G.home_skill_level, "
             + "    G.visitor_skill_level, "
-            + "    G.home_goal, "
             + "    G.visitor_goal, "
             + "    G.home_player_point, "
             + "    G.visitor_player_point, "
+            + "    G.home_game_point, "
+            + "    G.visitor_game_point, "
             + "    G.win_player_kbn, "
             + "    G.first_player_kbn, "
             + "    G.inning, "
@@ -486,28 +491,141 @@ export class MatchService {
         }
     }
 
-    // async getMatchListFromRedis(): Promise<Match[]> {
-    //     // 試合を全て取得
-    //     const matches = await redisClient.getAllAtDirectory<Match>('match');
-    //     // 試合に紐づく対戦を全て取得
-    //     matches.forEach(async m => m.gameList = await redisClient.getAllAtDirectory<Game>(`game:${m.matchId}`));
-    //     return matches;
-    // }
+    /**
+     * 対戦完了時に、対戦を更新・対戦アクションを登録する
+     * 排他エラーの場合、falseを返す
+     * @param req 対戦・対戦アクションリスト 
+     * @returns 
+     */
+    async updateFinishGame(req: GameFinishRequest): Promise<{ isHaita: boolean, game: Game | null }> {
+        const game: Game = req.game;
+        const history: Action[] = req.history;
 
-    // async getMatchFromRedis(matchId: string): Promise<Match | null> {
-    //     // 試合を取得
-    //     const match = await redisClient.get<Match>(`match:${matchId}`);
-    //     // 試合に紐づく対戦を全て取得
-    //     if (match) {
-    //         match.gameList = await redisClient.getAllAtDirectory<Game>(`game:${match?.matchId}`);
-    //     }
-    //     return match;
-    // }
+        const gameSql =
+            "UPDATE /*対戦完了更新*/ "
+            + "    t_game G "
+            + "SET "
+            + "    G.game_status = :CONSTANTS_GAMESTATUS_FINISHED "
+            + "    , G.end_dt = :END_DT "
+            + "    , G.home_player_point = :HOME_PLAYER_POINT "
+            + "    , G.visitor_player_point = :VISITOR_PLAYER_POINT "
+            + "    , G.home_game_point = :HOME_GAME_POINT "
+            + "    , G.visitor_game_point = :VISITOR_GAME_POINT "
+            + "    , G.win_player_kbn = :WIN_PLAYER_KBN "
+            + "    , G.inning = :INNING "
+            + "    , G.update_dt = now() "
+            + "    , G.update_user_id = :UPDATEUSERID "
+            + "    , G.update_kino_id = :UPDATEKINOID "
+            + "    , G.revision = G.revision + 1 "
+            + "WHERE "
+            + "    G.match_id = :MATCH_ID  "
+            + "    AND G.game_no = :GAME_NO "
+            + "    AND G.revision = :REVISION ";
 
-    // async updateMatchToRedis(match: Match) {
-    //     await redisClient.set(`match:${match.matchId}`, JSON.stringify(match));
-    //     match.gameList.forEach(async g => await redisClient.set(`game:${match.matchId}:${g.gameNo}`, JSON.stringify(g)));
-    // }
+        const actionSql =
+            "INSERT /*対戦アクション登録*/INTO  "
+            + "    t_game_action(  "
+            + "        match_id "
+            + "        , game_no "
+            + "        , action_no "
+            + "        , action_player_kbn "
+            + "        , rack "
+            + "        , inning "
+            + "        , action_type "
+            + "        , ball_num "
+            + "        , insert_dt "
+            + "        , insert_user_id "
+            + "        , insert_kino_id "
+            + "        , update_dt "
+            + "        , update_user_id "
+            + "        , update_kino_id "
+            + "        , revision "
+            + "    )  "
+            + "    VALUES (  "
+            + "        :MATCH_ID "
+            + "        , :GAME_NO "
+            + "        , :ACTION_NO "
+            + "        , :ACTION_PLAYER_KBN "
+            + "        , :RACK "
+            + "        , :INNING "
+            + "        , :ACTION_TYPE "
+            + "        , :BALL_NUM "
+            + "        , now() "
+            + "        , :INSERTUSERID "
+            + "        , :INSERTKINOID "
+            + "        , now() "
+            + "        , :UPDATEUSERID "
+            + "        , :UPDATEKINOID "
+            + "        , 1 "
+            + "    ) ";
+
+        const dao = new MysqlDao();
+
+        try {
+            // 接続
+            await dao.connect();
+            // ----------------------------------
+            // 対戦更新
+            // ----------------------------------
+            dao.setSql(gameSql);
+            dao.addParam('MATCH_ID', game.matchId);
+            dao.addParam('GAME_NO', game.gameNo);
+            dao.addParam('END_DT', new Date(game.endDt));
+            dao.addParam('HOME_PLAYER_POINT', game.homePlayerPoint);
+            dao.addParam('HOME_GAME_POINT', game.homeGamePoint);
+            dao.addParam('VISITOR_PLAYER_POINT', game.visitorPlayerPoint);
+            dao.addParam('VISITOR_GAME_POINT', game.visitorGamePoint);
+            dao.addParam('WIN_PLAYER_KBN', game.winPlayerKbn);
+            dao.addParam('INNING', game.inning);
+            dao.addParam('REVISION', game.revision);
+            dao.addParam('CONSTANTS_GAMESTATUS_FINISHED', GameStatus.FINISHED);
+            dao.addUpdateParam('test', 'test'); // todo : スタブ
+            const count = await dao.executeNonQuery();
+
+            if (count === 0) {
+                // 排他エラー
+                await dao.rollback();
+                return { isHaita: true, game: null };
+            }
+
+            // ----------------------------------
+            // 対戦アクション登録（バッチ実行）
+            // ----------------------------------
+            dao.setBatchSql(actionSql);
+            history.forEach(action => {
+                dao.addParam('MATCH_ID', game.matchId);
+                dao.addParam('GAME_NO', game.gameNo);
+                dao.addParam('ACTION_NO', action.actionNo);
+                dao.addParam('ACTION_PLAYER_KBN', action.playerKbn);
+                dao.addParam('RACK', action.rack);
+                dao.addParam('INNING', action.inning);
+                dao.addParam('ACTION_TYPE', action.type);
+                dao.addParam('BALL_NUM', action.ballNumber);
+                dao.addInsertParam('test', 'test'); // todo : スタブ
+
+                dao.addBatch();
+            })
+            const batchCount = await dao.executeBatch();
+
+            await dao.commit();
+
+            const g: Game | null = await this.getGame(game.matchId, game.gameNo);
+
+            return { isHaita: false, game: g };
+
+        } catch (error: any) {
+            await dao.rollback();
+            // インサートの重複エラーの判定
+            if (error.code === 'ER_DUP_ENTRY' || error.errno === 1062) {
+                return {isHaita: true, game: null };
+            } else {
+                // それ以外の予期せぬエラー（接続切れ、構文エラーなど）はそのまま再スロー
+                throw error;
+            }
+        } finally {
+            await dao.release();
+        }
+    }
 
 }
 

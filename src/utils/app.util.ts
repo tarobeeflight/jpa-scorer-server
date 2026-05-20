@@ -1,4 +1,4 @@
-import { HomeKbn } from "../constants.js";
+import { ActionType, HomeKbn } from "../constants.js";
 import { codeService } from "../services/code.service.js";
 import type { Action } from "../types/action.type.js";
 import type { GamePoint } from "../types/game-point.type.js";
@@ -65,7 +65,7 @@ export class AppUtil {
 
     private getPlayerPoint(homeKbn: HomeKbn, history: Action[]): number {
         return history
-            .filter(a => a.playerKbn === homeKbn && a.type === 'POCKET')
+            .filter(a => a.playerKbn === homeKbn && a.type === ActionType.POCKET)
             .reduce((sum, a) => sum + (a.ballNumber === 9 ? 2 : 1), 0);
     }
 
@@ -75,7 +75,7 @@ export class AppUtil {
     }
 
     private getCurrentInning(history: Action[]): number {
-        return Math.floor(history.filter(a => a.type === 'SWITCH').length / 2) + 1;
+        return Math.floor(history.filter(a => a.type === ActionType.SWITCH).length / 2) + 1;
     }
 
     calcLoserGamePoint(skillLevel: number, point: number): number {

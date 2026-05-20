@@ -4,6 +4,8 @@ import { mysqlClient } from "./mysql.client.js";
 export class MysqlDao {
   private sql: string = '';
   private params: Map<string, any> = new Map();
+  private batchSql: string = '';
+  private batchParams: Map<string, any>[] = [];
   private connection?: PoolConnection | undefined;
 
   /**
@@ -48,8 +50,24 @@ export class MysqlDao {
    * パラメータセット
    */
   addParam(key: string, value: any): void {
-    this.params.set(key, value);
+    this.params.set(key, value ?? null);
   }
+
+  /**
+   * バッチ用SQLセット
+   */
+  setBatchSql(sql: string): void {
+    this.batchSql = sql;
+  }
+
+  /**
+   * バッチ用パラメータ追加
+   */
+  addBatch(): void {
+    this.batchParams.push(new Map(this.params));
+    this.clear();
+  }
+  
 
   /**
    * パラメータセット
@@ -112,7 +130,7 @@ export class MysqlDao {
         throw new Error('Connection is not established.');
       }
 
-      const { query, params } = this.prepareQuery();
+      const { query, params } = this.prepareQuery(this.sql, this.params);
 
       console.log('--- SQL Log ---');
       console.log('Query:', query);
@@ -133,7 +151,7 @@ export class MysqlDao {
         throw new Error('Connection is not established.');
       }
 
-      const { query, params } = this.prepareQuery();
+      const { query, params } = this.prepareQuery(this.sql, this.params);
 
       console.log('--- SQL Log ---');
       console.log('Query:', query);
@@ -145,33 +163,65 @@ export class MysqlDao {
     }
   }
 
-  private prepareQuery(): { query: string; params: any[] } {
-    let preparedSql = this.sql;
-    const params: any[] = [];
-    const matches = this.sql.match(/:(\w+)\b/g);
+  /**
+   * バッチ実行
+   */
+  async executeBatch(): Promise<number> {
+    try {
+      if (!this.connection) {
+        throw new Error('Connection is not established.');
+      }
 
-    if (matches) {
-      // 重複を排除してループ（同じパラメータが複数回使われるケース対応）
-      const uniqueMatches = [...new Set(matches)];
+      if (!this.batchSql || this.batchParams.length === 0) {
+        return 0;
+      }
 
-      uniqueMatches.forEach((match) => {
-        const key = match.substring(1);
-        if (!this.params.has(key)) {
+      let preparedQuery = '';
+      const batchParams: any[][] = [];
+      this.batchParams.forEach(param => {
+        const { query, params } = this.prepareQuery(this.batchSql, param);
+        preparedQuery = query;
+        batchParams.push(params);
+      });
+
+      console.log('--- Batch SQL Log ---');
+      console.log('Batch count:', this.batchParams.length);
+
+      return await mysqlClient.executeBatch(this.connection, preparedQuery, batchParams);
+    } finally {
+      this.clear();
+      this.batchSql = '';
+      this.batchParams = [];
+    }
+  }
+
+  private prepareQuery(sql: string, params: Map<string, any>): { query: string; params: any[] } {
+    let preparedSql = String(sql);
+    const preparedParams: any[] = [];
+    const placeholders = sql.match(/:(\w+)\b/g);
+
+    if (placeholders) {
+      // SQL内のプレースホルダーのセットを作成
+      const uniquePlaceholders = [...new Set(placeholders)];
+
+      // SQL内のプレースホルダーを全て「?」に変換
+      uniquePlaceholders.forEach((placeholder) => {
+        const key = placeholder.substring(1);
+        if (!params.has(key)) {
           throw new Error(`Parameter "${key}" is missing.`);
         }
 
         // 全置換（正規表現を使って該当するパラメータ名をすべて ? に）
-        const regex = new RegExp(match + '\\b', 'g');
+        const regex = new RegExp(placeholder + '\\b', 'g');
         preparedSql = preparedSql.replace(regex, '?');
       });
 
-      // パラメータの値を順番通りに再収集
-      const orderedMatches = this.sql.match(/:(\w+)\b/g);
-      orderedMatches?.forEach(m => {
-        params.push(this.params.get(m.substring(1)));
+      // プレースホルダーの順番通りにパラメータの値を収集
+      placeholders.forEach(m => {
+        preparedParams.push(params.get(m.substring(1)));
       });
     }
-    return { query: preparedSql, params };
+    return { query: preparedSql, params: preparedParams };
   }
 
   private clear(): void {

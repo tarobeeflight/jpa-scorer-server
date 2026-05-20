@@ -64,6 +64,35 @@ export class MySQLClient {
       throw error;
     }
   }
+
+  /**
+   * 特定のコネクションを用いてバッチ処理を実行する
+   * ※ バルクインサートはSQLの構造から異なるため採用していない。普通の実行をループしている。
+   * @param conn プールから取得したコネクション
+   * @param sql プレースホルダーを含むSQL構文（例: INSERT INTO table (a, b) VALUES (?, ?)）
+   * @param params 2次元配列のパラメータ（例: [[1, 'foo'], [2, 'bar']]）
+   * @returns 影響を与えた合計行数（affectedRows）
+   */
+  async executeBatch(conn: mysql.PoolConnection, sql: string, params: any[][]): Promise<number> {
+    try {
+      if (!params || params.length === 0) {
+        return 0;
+      }
+
+      let totalAffectedRows = 0;
+
+      // 1行ずつプリペアドステートメントで実行する
+      for (const rowParams of params) {
+        const [result] = await conn.execute(sql, rowParams);
+        totalAffectedRows += (result as ResultSetHeader).affectedRows;
+      }
+
+      return totalAffectedRows;
+    } catch (error) {
+      console.error('Database Batch Execute Error: ', error);
+      throw error;
+    }
+  }
 }
 
 export const mysqlClient = new MySQLClient();

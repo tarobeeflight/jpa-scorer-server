@@ -1,9 +1,7 @@
-import type { HomeKbn } from "../constants.js";
-
-export type ActionType = 'POCKET' | 'DEAD' | 'NO_ACTION_DEAD' | 'SAFETY' | 'SWITCH';
+import type { ActionType, HomeKbn } from "../constants.js";
 
 export type Action = {
-  actionId: number;
+  actionNo: number;
   playerKbn: HomeKbn;
   rack: number;
   inning: number;

@@ -73,6 +73,8 @@ app.post('/api/game/update/player', (req: Request, res: Response) => matchContro
 app.post('/api/game/update/first-player', (req: Request, res: Response) => matchController.updateFirstPlayerOnGame(req, res));
 // POST /api/match/create エンドポイントの定義
 app.post('/api/match/create', (req: Request, res: Response) => matchController.create(req, res, io));
+// POST /api/game/finish エンドポイントの定義
+app.post('/api/game/finish', (req: Request, res: Response) => matchController.finish(req, res, io));
 
 // サーバーの起動
 httpServer.listen(PORT, () => {

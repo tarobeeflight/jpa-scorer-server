@@ -14,6 +14,8 @@ import type { UpdateFirstPlayerResponse } from '../types/responses/update-first-
 import { appUtil } from '../utils/app.util.js';
 import type { Game } from '../types/game.type.js';
 import type { MatchListBroadcastSocketResponse } from '../types/responses/match-list-broadcast.socket.response.js';
+import type { GameFinishRequest } from '../types/requests/game-finish.http.request.js';
+import { GameStatus } from '../constants.js';
 
 export class MatchController extends BaseController {
   // ---------------------------------------------------
@@ -35,6 +37,13 @@ export class MatchController extends BaseController {
       for (const m of matches) {
         const updatedGames = [];
         for (const g of m.gameList) {
+          // 対戦が完了している場合、そのまま使用
+          if (g.gameStatus === GameStatus.FINISHED) {
+            updatedGames.push(g);
+            continue;
+          }
+
+          // 完了していない場合、redisの履歴から作成したスコア情報で上書きした対戦を使用する
           const history = await scoreService.getHistoryFromRedis(g.matchId, g.gameNo);
           updatedGames.push(appUtil.convertHistoryToGame(g, history));
         }
@@ -142,6 +151,32 @@ export class MatchController extends BaseController {
       this.broadcastMatchCreate(io, match);
 
       const response = this.createResponse('success', 'Match created successfully', undefined);
+      return res.json(response);
+    } catch (error) {
+      console.error(error);
+      const response = this.createResponse('error', 'Internal Server Error', undefined);
+      return res.status(500).json(response);
+    }
+  }
+
+  /**
+   * 対戦完了時に対戦を更新、対戦アクションを一括登録する
+   * 完了した対戦を試合一覧にブロードキャストする
+   * @param req 
+   * @param res 
+   * @returns 
+   */
+  async finish(req: Request, res: Response, io: Server) {
+    try {
+      // 対戦を更新・対戦アクションを登録
+      const result = await matchService.updateFinishGame(req.body as GameFinishRequest);
+
+      if (!result.isHaita) {
+        // 更新した試合をブロードキャスト
+        this.broadcastGameUpdate(io, result.game!);
+    }
+
+      const response = this.createResponse('success', 'Game finish successfully', result.isHaita);
       return res.json(response);
     } catch (error) {
       console.error(error);
