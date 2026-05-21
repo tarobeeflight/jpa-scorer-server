@@ -8,7 +8,4 @@ export type Player = {
     name: string;
     skillLevel: number;
     goal: number;
-
-    // todo : 暫定対応
-    id: 1 | 2; // プレイヤーID（1 or 2）
 }

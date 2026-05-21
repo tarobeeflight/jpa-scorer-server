@@ -15,7 +15,7 @@ export class ScoreService {
   }
 
   async getHistoryFromRedis(matchId: string, gameNo: number): Promise<Action[] | null> {
-    return await redisClient.get<Action[]>(`game:${matchId}:${gameNo}`); // todo : リストに変換されるか確認
+    return await redisClient.get<Action[]>(`game:${matchId}:${gameNo}`);
   }
 
   async getHistoryFromDb(matchId: string, gameNo: number): Promise<Action[] | null> {

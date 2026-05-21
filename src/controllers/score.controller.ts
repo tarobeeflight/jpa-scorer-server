@@ -25,6 +25,8 @@ export class ScoreController extends BaseController {
     // スコア更新をリッスン
     listenUpdateScore(socket: Socket, io: Server) {
         socket.on('update-score', async (data: UpdateScoreSocketRequest) => {
+            console.log(`User ${socket.id} emit update-score`);
+
             const reqGame = data.game;
 
             // 履歴をRedisに登録する
@@ -36,6 +38,8 @@ export class ScoreController extends BaseController {
             // 試合一覧ルームに対戦更新を通知
             const updatedGame = appUtil.convertHistoryToGame(reqGame, data.history);
             matchController.broadcastGameUpdate(io, updatedGame);
+
+
         });
     }
 
@@ -43,6 +47,7 @@ export class ScoreController extends BaseController {
     broadcastHistoryUpdate(io: Server, matchId: string, gameNo: number, history: Action[]): void {
         const response = this.createResponse('success', 'broadcast history update', history);
         io.to(matchId + '-' + gameNo).emit('history-broadcast', response);
+        console.log(`history-broadcast`);
     }
 }
 

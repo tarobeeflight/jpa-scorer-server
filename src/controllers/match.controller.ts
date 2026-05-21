@@ -298,6 +298,7 @@ export class MatchController extends BaseController {
     const data: MatchListBroadcastSocketResponse = { match, game: null };
     const response = this.createResponse('success', 'broadcast match update', data);
     io.to('match-list').emit('match-list-broadcast', response);
+    console.log(`match-list-broadcast for match`);
   }
 
   // 試合一覧ルームに対戦更新をブロードキャスト
@@ -305,6 +306,7 @@ export class MatchController extends BaseController {
     const data: MatchListBroadcastSocketResponse = { game, match: null };
     const response = this.createResponse('success', 'broadcast match update', data);
     io.to('match-list').emit('match-list-broadcast', response);
+    console.log(`match-list-broadcast for game`);
   }
 
 }
