@@ -1,4 +1,4 @@
-import type { HomeKbn } from "../../constants.js";
+import type { Game } from "../game.type.js";
 
 
-export type UpdateFirstPlayerResponse = { isHaita: boolean, firstPlayerKbn: HomeKbn };
+export type UpdateFirstPlayerResponse = { isHaita: boolean, game: Game };

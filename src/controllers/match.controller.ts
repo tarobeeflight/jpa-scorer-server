@@ -69,6 +69,7 @@ export class MatchController extends BaseController {
   async getPlayerInfoInit(req: Request, res: Response) {
     try {
       // 取得
+      const match = (await matchService.getMatchList([req.params.matchId as string]))?.at(0) ?? null;
       const game = await matchService.getGame(req.params.matchId as string, Number(req.params.gameNo));
       const codeList = await codeService.get('SKILL_LEVEL_TO_GOAL');
 
@@ -80,7 +81,7 @@ export class MatchController extends BaseController {
       });
 
       // データ成形
-      const data: PlayerInfoInitResponse = { game, skillToGoal };
+      const data: PlayerInfoInitResponse = { match, game, skillToGoal };
       const response = this.createResponse('success', 'Game retrieved successfully', data);
 
       console.log('getPlayerInfoInit response:', response);
@@ -223,13 +224,9 @@ export class MatchController extends BaseController {
       const reqData = req.body as UpdateFirstPlayerRequest;
       const { isHaita } = await matchService.updateFirstPlayerOnGame(reqData);
 
-      let resData: UpdateFirstPlayerResponse;
-      if (isHaita) {
-        const game = await matchService.getGame(reqData.matchId, reqData.gameNo);
-        resData = { isHaita: true, firstPlayerKbn: game!.firstPlayerKbn };
-      } else {
-        resData = { isHaita: false, firstPlayerKbn: reqData.firstPlayerKbn };
-      }
+      const game = await matchService.getGame(reqData.matchId, reqData.gameNo);
+      const resData: UpdateFirstPlayerResponse = { isHaita: isHaita, game: game! };
+      
       const response = this.createResponse('success', 'Game updated for first player successfully', resData);
       return res.json(response);
     } catch (error) {
